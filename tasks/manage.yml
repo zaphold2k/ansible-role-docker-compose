@@ -1,0 +1,32 @@
+---
+- name: "[DEBUG] item to manage"
+  debug: 
+    var: item
+    verbosity: 2
+
+- name: "[{{ item.key }}] Stop Docker Compose service"
+  community.docker.docker_compose_v2:
+    project_src: "{{ item.value.compose_file | dirname }}"
+    project_name: "{{ item.value.project_name }}"
+    state: stopped
+  tags:
+    - stop
+    - restart
+
+- name: "[{{ item.key }}] Start or restart Docker Compose service"
+  community.docker.docker_compose_v2:
+    project_src: "{{ item.value.compose_file | dirname }}"
+    project_name: "{{ item.value.project_name }}"
+    state: present
+  when: item.value.enabled
+  tags:
+    - start
+    - restart
+
+- name: "[{{ item.key }}] Down Docker Compose service"
+  community.docker.docker_compose_v2:
+    project_src: "{{ item.value.compose_file | dirname }}"
+    project_name: "{{ item.value.project_name }}"
+    state: absent
+  tags:
+    - down

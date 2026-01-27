@@ -1,0 +1,27 @@
+---
+- name: "[DEBUG] item to manage"
+  debug: 
+    var: item
+    verbosity: 2
+  tags:
+    - pull
+    - update
+
+- name: "[{{ item.key }}] Pull Docker image"
+  community.docker.docker_compose_v2_pull:
+    project_src: "{{ item.value.compose_file | dirname }}"
+  register: compose_pull_result
+  tags:
+    - pull
+    - update
+
+- name: "[{{ item.key }}] Start Docker Compose service (recreate if updated)"
+  community.docker.docker_compose_v2:
+    project_src: "{{ item.value.compose_file | dirname }}"
+    state: present
+  register: compose_install_result
+  when: 
+    - item.value.enabled | default(true)
+    - compose_pull_result.changed
+  tags: 
+    - update

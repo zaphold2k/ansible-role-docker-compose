@@ -1,0 +1,23 @@
+galaxy_info:
+  role_name: docker compose manager
+  author: "Martin Casanovas <me@zaphold.ar>"
+  description: Docker compose manager role for Ansible
+  license: GPL-3.0
+  min_ansible_version: "2.18"
+  platforms:
+    - name: RedHat
+      versions:
+        - all
+    - name: CentOS
+      versions:
+        - all
+    - name: Debian
+      versions:
+        - all
+    - name: Ubuntu
+      versions:
+        - all
+  galaxy_tags:
+    - system
+
+dependencies: []

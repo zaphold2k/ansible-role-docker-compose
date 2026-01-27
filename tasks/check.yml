@@ -1,0 +1,39 @@
+---
+
+- name: Check if Docker is installed
+  ansible.builtin.command: docker --version
+  register: docker_version
+  changed_when: false
+  failed_when: false
+
+- name: Fail if Docker is not installed
+  ansible.builtin.fail:
+    msg: "Docker is not installed on this host. Please install Docker first."
+  when: docker_version.rc != 0
+
+- name: Check if Docker Compose is available
+  ansible.builtin.command: docker compose version
+  register: compose_version
+  changed_when: false
+  failed_when: false
+
+- name: Fail if Docker Compose is not available
+  ansible.builtin.fail:
+    msg: "Docker Compose is not available. Please install Docker Compose v2."
+  when: compose_version.rc != 0
+
+- name: Display Docker and Compose versions
+  ansible.builtin.debug:
+    msg:
+      - "{{ docker_version.stdout }}"
+      - "{{ compose_version.stdout }}"
+
+- name: Display apps from inventory
+  ansible.builtin.debug:
+    msg: "Apps configured for this host: {{ docker_services.keys() | list }}"
+  when: docker_services is defined
+
+- name: Fail if apps variable is not defined
+  ansible.builtin.fail:
+    msg: "No apps defined for this host in the inventory"
+  when: docker_services is not defined or docker_services | length == 0

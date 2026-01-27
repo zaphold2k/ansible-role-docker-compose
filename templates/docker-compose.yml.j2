@@ -1,0 +1,19 @@
+services:
+{% for container in item.value.definition %}
+  {{ container.container_name }}:
+{{ container | to_nice_yaml(indent=4) | indent(4, first=true) }}
+{% endfor %}
+
+{% if item.value.network_definition is defined %}
+networks:
+{% for networks in item.value.networks_definition %}
+{{ networks | to_nice_yaml(indent=2) | indent(2, first=true) }}
+{% endfor %}
+{% endif %}
+
+{% if item.value.volume_definition is defined %}
+volumes:
+{% for volumes in item.value.volumes_definition %}
+{{ volumes | to_nice_yaml(indent=2) | indent(2, first=true) }}
+{% endfor %}
+{% endif %}

@@ -1,0 +1,64 @@
+---
+- name: "[{{ item.key }}] [DEBUG] item to manage"
+  debug: 
+    var: item
+    verbosity: 2
+  tags: 
+    - install
+
+# TODO: manage .env files
+
+- name: "[{{ item.key }}] Ensure docker compose base path exists"
+  ansible.builtin.file:
+    path: "{{ item.value.compose_file | dirname }}"
+    state: directory
+  tags: 
+    - install
+
+- name: "[{{ item.key }}] Check if docker-compose.yml exists"
+  ansible.builtin.stat:
+    path: "{{ item.value.compose_file }}"
+  register: compose_file_stat
+  tags: 
+    - install
+
+- name: "[{{ item.key }}] Create or update docker-compose.yml with .j2"
+  template:
+    src: "templates/docker-compose.yml.j2"
+    dest: "{{ item.value.compose_file }}"
+  register: compose_template_result
+  tags: 
+    - install
+
+- name: "[{{ item.key }}][DEBUG] Template output"
+  debug:
+    var: compose_template_result
+    verbosity: 2
+  tags:
+    - install
+
+- name: "[{{ item.key }}] Stop existing Docker Compose service if compose file changed"
+  community.docker.docker_compose_v2:
+    project_src: "{{ item.value.compose_file | dirname }}"
+    state: stopped
+  when: 
+    - compose_file_stat.stat.exists
+    - compose_template_result.changed
+    - item.value.enabled | default(true)
+  tags: 
+    - install
+    - stop
+
+- name: "[{{ item.key }}] Start Docker Compose service (recreate if updated)"
+  community.docker.docker_compose_v2:
+    project_src: "{{ item.value.compose_file | dirname }}"
+    state: present
+    pull: always
+    recreate: "{{ 'always' if compose_template_result.changed else 'auto' }}"
+  register: compose_install_result
+  when: 
+    - item.value.enabled | default(true)
+    - compose_template_result.changed
+  tags: 
+    - install
+    - start
