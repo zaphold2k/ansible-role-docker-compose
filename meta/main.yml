@@ -1,5 +1,6 @@
 galaxy_info:
-  role_name: docker compose manager
+  role_name: docker_compose_manager
+  namespace: zaphold2k
   author: "Martin Casanovas <me@zaphold.ar>"
   description: Docker compose manager role for Ansible
   license: GPL-3.0
