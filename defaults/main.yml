@@ -1,23 +1,4 @@
 ---
-update_compose_files: true
-force_compose_update: false
-
 docker_compose_base_path: "/opt"
 
-docker_services_state: "started"
-
 docker_services: []
-  # Define your docker services here or in host_vars
-  # Example:
-  # homeassistant:
-  #   enabled: true
-  #   compose_file: "{{ docker_compose_base_path }}/homeassistant/docker-compose.yaml"
-  #   project_name: homeassistant
-  #   definition:
-  #   - container_name: homeassistant
-  #     image: "homeassistant/home-assistant:latest"
-  #     restart: unless-stopped
-  #     ports:
-  #       - "8123:8123"
-  #     volumes:
-  #       - "/mnt/ssd_data/homeassistant/config:/config"

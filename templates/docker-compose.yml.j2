@@ -1,5 +1,5 @@
 services:
-{% for container in item.value.definition %}
+{% for container in item.value.container_definition %}
   {{ container.container_name }}:
 {{ container | to_nice_yaml(indent=4) | indent(4, first=true) }}
 {% endfor %}
