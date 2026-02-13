@@ -1,6 +1,6 @@
 ---
 - name: "[DEBUG] item to manage"
-  debug: 
+  ansible.builtin.debug:
     var: item
     verbosity: 2
   tags:
@@ -20,8 +20,8 @@
     project_src: "{{ item.value.compose_file | dirname }}"
     state: present
   register: compose_install_result
-  when: 
+  when:
     - item.value.enabled | default(true)
     - compose_pull_result.changed
-  tags: 
+  tags:
     - update

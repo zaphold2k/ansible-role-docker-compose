@@ -1,9 +1,9 @@
 ---
 - name: "[{{ item.key }}] [DEBUG] item to manage"
-  debug: 
+  ansible.builtin.debug:
     var: item
     verbosity: 2
-  tags: 
+  tags:
     - install
 
 # TODO: manage .env files
@@ -11,27 +11,29 @@
 - name: "[{{ item.key }}] Ensure docker compose base path exists"
   ansible.builtin.file:
     path: "{{ item.value.compose_file | dirname }}"
+    mode: "0750"
     state: directory
-  tags: 
+  tags:
     - install
 
 - name: "[{{ item.key }}] Check if docker-compose.yml exists"
   ansible.builtin.stat:
     path: "{{ item.value.compose_file }}"
   register: compose_file_stat
-  tags: 
+  tags:
     - install
 
 - name: "[{{ item.key }}] Create or update docker-compose.yml with .j2"
-  template:
+  ansible.builtin.template:
     src: "templates/docker-compose.yml.j2"
     dest: "{{ item.value.compose_file }}"
+    mode: "0750"
   register: compose_template_result
-  tags: 
+  tags:
     - install
 
 - name: "[{{ item.key }}][DEBUG] Template output"
-  debug:
+  ansible.builtin.debug:
     var: compose_template_result
     verbosity: 2
   tags:
@@ -41,11 +43,11 @@
   community.docker.docker_compose_v2:
     project_src: "{{ item.value.compose_file | dirname }}"
     state: stopped
-  when: 
+  when:
     - compose_file_stat.stat.exists
     - compose_template_result.changed
     - item.value.enabled | default(true)
-  tags: 
+  tags:
     - install
     - stop
 
@@ -56,9 +58,9 @@
     pull: always
     recreate: "{{ 'always' if compose_template_result.changed else 'auto' }}"
   register: compose_install_result
-  when: 
+  when:
     - item.value.enabled | default(true)
     - compose_template_result.changed
-  tags: 
+  tags:
     - install
     - start

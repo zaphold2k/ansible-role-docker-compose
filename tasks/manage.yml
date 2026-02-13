@@ -1,6 +1,6 @@
 ---
 - name: "[DEBUG] item to manage"
-  debug: 
+  ansible.builtin.debug:
     var: item
     verbosity: 2
 

@@ -1,35 +1,36 @@
 ---
 # search installed and running dockers
 - name: Check
-  include_tasks: check.yml
-  tags: always
+  ansible.builtin.include_tasks: check.yml
+  tags: 
+    - always
  
 # install docker composes
 - name: Install missing docker composes
-  include_tasks: install.yml
+  ansible.builtin.include_tasks: install.yml
   loop: "{{ docker_services | dict2items }}"
-  tags: 
+  tags:
     - install
 
 # update images and restart docker composes
 - name: Update and restart docker composes
-  include_tasks: update.yml
+  ansible.builtin.include_tasks: update.yml
   loop: "{{ docker_services | dict2items }}"
-  tags: 
+  tags:
     - update
     - pull
 
 - name: Start/Stop docker composes
-  include_tasks: manage.yml
+  ansible.builtin.include_tasks: manage.yml
   loop: "{{ docker_services | dict2items }}"
-  tags: 
+  tags:
     - disable
 
 # Start/Stop docker composes
 - name: Start/Stop docker composes
-  include_tasks: manage.yml
+  ansible.builtin.include_tasks: manage.yml
   loop: "{{ docker_services | dict2items }}"
-  tags: 
+  tags:
     - start
     - stop
     - restart
