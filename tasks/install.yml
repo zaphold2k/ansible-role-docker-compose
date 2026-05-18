@@ -12,6 +12,8 @@
   ansible.builtin.file:
     path: "{{ item.value.compose_file | dirname }}"
     mode: "0750"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
     state: directory
   tags:
     - install
@@ -27,6 +29,8 @@
   ansible.builtin.template:
     src: "templates/docker-compose.yml.j2"
     dest: "{{ item.value.compose_file }}"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
     mode: "0750"
   register: compose_template_result
   tags:

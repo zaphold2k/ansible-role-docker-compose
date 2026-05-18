@@ -19,12 +19,7 @@
   tags:
     - update
     - pull
-
-- name: Start/Stop docker composes
-  ansible.builtin.include_tasks: manage.yml
-  loop: "{{ docker_services | dict2items }}"
-  tags:
-    - disable
+    - never
 
 # Start/Stop docker composes
 - name: Start/Stop docker composes
@@ -35,3 +30,5 @@
     - stop
     - restart
     - down
+    - disable
+    - never

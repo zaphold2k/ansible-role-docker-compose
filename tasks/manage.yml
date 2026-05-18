@@ -7,7 +7,7 @@
 - name: "[{{ item.key }}] Stop Docker Compose service"
   community.docker.docker_compose_v2:
     project_src: "{{ item.value.compose_file | dirname }}"
-    project_name: "{{ item.value.project_name }}"
+    project_name: "{{ item.key }}"
     state: stopped
   tags:
     - stop
@@ -16,7 +16,7 @@
 - name: "[{{ item.key }}] Start or restart Docker Compose service"
   community.docker.docker_compose_v2:
     project_src: "{{ item.value.compose_file | dirname }}"
-    project_name: "{{ item.value.project_name }}"
+    project_name: "{{ item.key }}"
     state: present
   when: item.value.enabled
   tags:
@@ -26,7 +26,7 @@
 - name: "[{{ item.key }}] Down Docker Compose service"
   community.docker.docker_compose_v2:
     project_src: "{{ item.value.compose_file | dirname }}"
-    project_name: "{{ item.value.project_name }}"
+    project_name: "{{ item.key }}"
     state: absent
   tags:
     - down
