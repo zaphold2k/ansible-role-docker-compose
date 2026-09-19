@@ -1,19 +1,20 @@
+# Managed by Ansible (docker-compose-manager) - do not edit by hand
 services:
 {% for container in item.value.container_definition %}
   {{ container.container_name }}:
 {{ container | to_nice_yaml(indent=4) | indent(4, first=true) }}
 {% endfor %}
+{% if item.value.networks_definition is defined and item.value.networks_definition | length > 0 %}
 
-{% if item.value.network_definition is defined %}
 networks:
-{% for networks in item.value.networks_definition %}
-{{ networks | to_nice_yaml(indent=2) | indent(2, first=true) }}
+{% for network in item.value.networks_definition %}
+{{ network | to_nice_yaml(indent=2) | indent(2, first=true) }}
 {% endfor %}
 {% endif %}
+{% if item.value.volumes_definition is defined and item.value.volumes_definition | length > 0 %}
 
-{% if item.value.volume_definition is defined %}
 volumes:
-{% for volumes in item.value.volumes_definition %}
-{{ volumes | to_nice_yaml(indent=2) | indent(2, first=true) }}
+{% for volume in item.value.volumes_definition %}
+{{ volume | to_nice_yaml(indent=2) | indent(2, first=true) }}
 {% endfor %}
 {% endif %}

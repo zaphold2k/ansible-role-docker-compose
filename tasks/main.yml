@@ -1,18 +1,18 @@
 ---
-# search installed and running dockers
+# Validate docker / compose and the docker_services variable
 - name: Check
   ansible.builtin.include_tasks: check.yml
-  tags: 
+  tags:
     - always
- 
-# install docker composes
-- name: Install missing docker composes
+
+# Render compose (+ .env) files and make sure enabled services are up
+- name: Install docker composes
   ansible.builtin.include_tasks: install.yml
   loop: "{{ docker_services | dict2items }}"
   tags:
     - install
 
-# update images and restart docker composes
+# Pull images and recreate containers when a new image was pulled
 - name: Update and restart docker composes
   ansible.builtin.include_tasks: update.yml
   loop: "{{ docker_services | dict2items }}"
@@ -21,7 +21,7 @@
     - pull
     - never
 
-# Start/Stop docker composes
+# Start/Stop/Restart/Down docker composes
 - name: Start/Stop docker composes
   ansible.builtin.include_tasks: manage.yml
   loop: "{{ docker_services | dict2items }}"
@@ -30,5 +30,4 @@
     - stop
     - restart
     - down
-    - disable
     - never

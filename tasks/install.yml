@@ -6,14 +6,12 @@
   tags:
     - install
 
-# TODO: manage .env files
-
-- name: "[{{ item.key }}] Ensure docker compose base path exists"
+- name: "[{{ item.key }}] Ensure docker compose project directory exists"
   ansible.builtin.file:
     path: "{{ item.value.compose_file | dirname }}"
     mode: "0750"
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
+    owner: "{{ docker_compose_files_owner }}"
+    group: "{{ docker_compose_files_group }}"
     state: directory
   tags:
     - install
@@ -25,46 +23,78 @@
   tags:
     - install
 
-- name: "[{{ item.key }}] Create or update docker-compose.yml with .j2"
+- name: "[{{ item.key }}] Create or update docker-compose.yml"
   ansible.builtin.template:
     src: "templates/docker-compose.yml.j2"
     dest: "{{ item.value.compose_file }}"
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
-    mode: "0750"
+    owner: "{{ docker_compose_files_owner }}"
+    group: "{{ docker_compose_files_group }}"
+    mode: "{{ docker_compose_file_mode }}"
   register: compose_template_result
   tags:
     - install
 
-- name: "[{{ item.key }}][DEBUG] Template output"
-  ansible.builtin.debug:
-    var: compose_template_result
-    verbosity: 2
+# .env handling: keys live in the inventory (env_vars dict or a custom .j2),
+# values come from vault variables. Never printed / diffed to avoid leaking secrets.
+- name: "[{{ item.key }}] Create or update .env from env_vars"
+  ansible.builtin.template:
+    src: "templates/env.j2"
+    dest: "{{ item.value.compose_file | dirname }}/.env"
+    owner: "{{ docker_compose_files_owner }}"
+    group: "{{ docker_compose_files_group }}"
+    mode: "{{ docker_compose_env_file_mode }}"
+  diff: false
+  register: env_vars_result
+  when:
+    - item.value.env_vars is defined
+    - item.value.env_vars | length > 0
   tags:
     - install
 
-- name: "[{{ item.key }}] Stop existing Docker Compose service if compose file changed"
+- name: "[{{ item.key }}] Create or update .env from custom template"
+  ansible.builtin.template:
+    src: "{{ item.value.env_file_template }}"
+    dest: "{{ item.value.compose_file | dirname }}/.env"
+    owner: "{{ docker_compose_files_owner }}"
+    group: "{{ docker_compose_files_group }}"
+    mode: "{{ docker_compose_env_file_mode }}"
+  diff: false
+  register: env_template_result
+  when:
+    - item.value.env_file_template is defined
+  tags:
+    - install
+
+- name: "[{{ item.key }}] Register whether the project definition changed"
+  ansible.builtin.set_fact:
+    compose_project_changed: >-
+      {{ compose_template_result.changed
+         or (env_vars_result.changed | default(false))
+         or (env_template_result.changed | default(false)) }}
+  tags:
+    - install
+
+- name: "[{{ item.key }}] Stop running service because its definition changed"
   community.docker.docker_compose_v2:
     project_src: "{{ item.value.compose_file | dirname }}"
+    project_name: "{{ item.value.project_name | default(omit) }}"
     state: stopped
   when:
     - compose_file_stat.stat.exists
-    - compose_template_result.changed
+    - compose_project_changed | bool
     - item.value.enabled | default(true)
   tags:
     - install
-    - stop
 
-- name: "[{{ item.key }}] Start Docker Compose service (recreate if updated)"
+- name: "[{{ item.key }}] Ensure service is up (recreate if definition changed)"
   community.docker.docker_compose_v2:
     project_src: "{{ item.value.compose_file | dirname }}"
+    project_name: "{{ item.value.project_name | default(omit) }}"
     state: present
-    pull: always
-    recreate: "{{ 'always' if compose_template_result.changed else 'auto' }}"
+    pull: "{{ 'always' if compose_project_changed | bool else 'missing' }}"
+    recreate: "{{ 'always' if compose_project_changed | bool else 'auto' }}"
   register: compose_install_result
   when:
     - item.value.enabled | default(true)
-    - compose_template_result.changed
   tags:
     - install
-    - start

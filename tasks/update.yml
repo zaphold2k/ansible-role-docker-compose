@@ -1,5 +1,5 @@
 ---
-- name: "[DEBUG] item to manage"
+- name: "[{{ item.key }}] [DEBUG] item to manage"
   ansible.builtin.debug:
     var: item
     verbosity: 2
@@ -7,19 +7,22 @@
     - pull
     - update
 
-- name: "[{{ item.key }}] Pull Docker image"
+- name: "[{{ item.key }}] Pull docker images"
   community.docker.docker_compose_v2_pull:
     project_src: "{{ item.value.compose_file | dirname }}"
+    project_name: "{{ item.value.project_name | default(omit) }}"
   register: compose_pull_result
+  when: item.value.enabled | default(true)
   tags:
     - pull
     - update
 
-- name: "[{{ item.key }}] Start Docker Compose service (recreate if updated)"
+- name: "[{{ item.key }}] Recreate service with updated images"
   community.docker.docker_compose_v2:
     project_src: "{{ item.value.compose_file | dirname }}"
+    project_name: "{{ item.value.project_name | default(omit) }}"
     state: present
-  register: compose_install_result
+  register: compose_update_result
   when:
     - item.value.enabled | default(true)
     - compose_pull_result.changed

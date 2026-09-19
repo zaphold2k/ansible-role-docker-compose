@@ -46,7 +46,11 @@ Available in [defaults/main.yml](defaults/main.yml):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `docker_compose_base_path` | `/opt` | Base directory for Docker Compose projects |
-| `docker_services` | `[]` | Dictionary of services to manage |
+| `docker_services` | `{}` | Dictionary of services to manage |
+| `docker_compose_file_mode` | `0640` | Mode of the generated compose file |
+| `docker_compose_env_file_mode` | `0600` | Mode of the generated `.env` file |
+| `docker_compose_files_owner` | `{{ ansible_user \| default("root") }}` | Owner of generated files |
+| `docker_compose_files_group` | same as owner | Group of generated files |
 
 ### Service Definition Structure
 
@@ -57,10 +61,17 @@ docker_services:
   <service_name>:
     enabled: true|false                    # Whether the service should be running
     compose_file: "path/to/compose.yaml"   # Path where compose file will be created
+    project_name: "<name>"                 # Optional: compose project name (default: compose dir name)
     container_definition: []               # List of service definitions (see below)
     networks_definition: []                # Optional: list of network definitions
     volumes_definition: []                 # Optional: list of volume definitions
+    env_vars: {}                           # Optional: KEY: value dict rendered to <compose dir>/.env
+    env_file_template: "path/to/env.j2"    # Optional: custom Jinja2 template rendered to <compose dir>/.env
 ```
+
+`project_name` is passed to every `docker_compose_v2` call (install, update, start,
+stop, restart, down), so all phases always address the same compose project. When
+omitted, Docker Compose derives it from the compose directory name.
 
 #### Container Definition
 
@@ -107,6 +118,51 @@ volumes_definition:
       name: mydata
       driver: local
 ```
+
+#### `.env` files (secrets)
+
+The role can generate the `.env` file next to the compose file. The intended
+pattern is: **keys live in the inventory, values live in an Ansible Vault**.
+
+Option A — `env_vars` dict, rendered with the role's `templates/env.j2`:
+
+```yaml
+docker_services:
+  cloudflared:
+    env_vars:
+      TUNNEL_TOKEN: "{{ vault_cloudflared_tunnel_token }}"
+```
+
+Option B — `env_file_template`, a custom Jinja2 file you own (useful for long
+`.env` files with comments, or `.dist`-style files):
+
+```yaml
+docker_services:
+  cloudflared:
+    env_file_template: "{{ inventory_dir }}/templates/cloudflared.env.j2"
+```
+
+```ini
+# templates/cloudflared.env.j2
+TUNNEL_TOKEN={{ vault_cloudflared_tunnel_token }}
+```
+
+In both cases the values are expected to come from an encrypted vars file, e.g.
+`group_vars/all/vault.yaml`:
+
+```yaml
+vault_cloudflared_tunnel_token: "eyJh..."
+```
+
+Notes:
+
+- The `.env` is written with mode `0600` (`docker_compose_env_file_mode`) and the
+  task runs with `diff: false`, so secrets never show up in `--diff` output.
+- A change in the rendered `.env` counts as a definition change: the service is
+  stopped and recreated, exactly as when the compose file changes.
+- If neither `env_vars` nor `env_file_template` is set, the role does not touch
+  `.env`; whatever exists on the host is left as is.
+- Remember to reference the file from the container: `env_file: [{path: .env, required: true}]`.
 
 ## Usage
 
@@ -169,15 +225,19 @@ volumes_definition:
 
 The role supports granular control via Ansible tags:
 
-| Tag | Action | Description |
-|-----|--------|-------------|
-| `install` | Install/Deploy | Creates compose files and starts enabled services |
-| `start` | Start | Starts all enabled services |
-| `stop` | Stop | Stops all services (preserves containers) |
-| `restart` | Restart | Restarts all enabled services |
-| `down` | Teardown | Stops and removes containers, networks, volumes |
-| `disable` | Disable | Stops services where `enabled: false` |
-| `update` / `pull` | Update | Pulls latest images and recreates containers |
+| Tag | Action | Default run | Description |
+|-----|--------|-------------|-------------|
+| `install` | Install/Deploy | yes | Renders compose + `.env`, ensures enabled services are up. Recreates only when the definition changed. |
+| `start` | Start | no (`never`) | `up -d` for enabled services |
+| `stop` | Stop | no (`never`) | Stops every loaded service, regardless of `enabled` |
+| `restart` | Restart | no (`never`) | `stop` + `start` |
+| `down` | Teardown | no (`never`) | Stops and removes containers and networks of the project |
+| `pull` | Pull | no (`never`) | Pulls images only |
+| `update` | Update | no (`never`) | Pulls images and recreates containers when a new image was pulled |
+
+Tags marked `never` only run when explicitly requested with `--tags`. To take a
+service out of service set `enabled: false` **and** run `--tags down` (or `stop`);
+the flag alone only prevents the role from starting it.
 
 ### Tag Examples
 
@@ -194,9 +254,6 @@ ansible-playbook docker-deploy.yml --tags stop
 # Restart specific host
 ansible-playbook docker-deploy.yml --tags restart --limit myhost
 
-# Disable services marked as enabled: false
-ansible-playbook docker-deploy.yml --tags disable
-
 # Complete teardown
 ansible-playbook docker-deploy.yml --tags down
 ```
@@ -211,9 +268,9 @@ ansible-playbook docker-deploy.yml --tags down
 ### 2. Installation Phase (`install` tag)
 - Creates directory structure for each service
 - Generates `docker-compose.yaml` from templates
-- Automatically stops services if compose file changed
-- Starts enabled services with `pull: always`
-- Recreates containers when configuration changes
+- Generates `.env` when `env_vars` or `env_file_template` is defined
+- If compose or `.env` changed: stops the service, then `up` with `pull: always` and `recreate: always`
+- If nothing changed: `up` with `pull: missing` and `recreate: auto` (idempotent, brings up stopped services)
 
 ### 3. Update Phase (`update`/`pull` tags)
 - Pulls latest images using `docker_compose_v2_pull`
@@ -285,7 +342,6 @@ ansible-playbook docker-deploy.yml -vv
 
 ## TODO
 
-- [ ] Manage `.env` files using Ansible Vault for secure credential handling
 - [ ] Add health check verification after service start
 - [ ] Backup functionality before updates
 - [ ] Rollback capability on failed updates
