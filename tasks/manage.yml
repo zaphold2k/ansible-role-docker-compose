@@ -1,32 +1,32 @@
 ---
-- name: "[DEBUG] item to manage"
+- name: "[{{ item.key }}] [DEBUG] item to manage"
   ansible.builtin.debug:
     var: item
     verbosity: 2
 
-- name: "[{{ item.key }}] Stop Docker Compose service"
+- name: "[{{ item.key }}] Stop docker compose service"
   community.docker.docker_compose_v2:
     project_src: "{{ item.value.compose_file | dirname }}"
-    project_name: "{{ item.key }}"
+    project_name: "{{ item.value.project_name | default(omit) }}"
     state: stopped
   tags:
     - stop
     - restart
 
-- name: "[{{ item.key }}] Start or restart Docker Compose service"
+- name: "[{{ item.key }}] Start docker compose service"
   community.docker.docker_compose_v2:
     project_src: "{{ item.value.compose_file | dirname }}"
-    project_name: "{{ item.key }}"
+    project_name: "{{ item.value.project_name | default(omit) }}"
     state: present
-  when: item.value.enabled
+  when: item.value.enabled | default(true)
   tags:
     - start
     - restart
 
-- name: "[{{ item.key }}] Down Docker Compose service"
+- name: "[{{ item.key }}] Down docker compose service"
   community.docker.docker_compose_v2:
     project_src: "{{ item.value.compose_file | dirname }}"
-    project_name: "{{ item.key }}"
+    project_name: "{{ item.value.project_name | default(omit) }}"
     state: absent
   tags:
     - down
