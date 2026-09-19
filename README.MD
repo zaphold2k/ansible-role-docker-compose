@@ -48,7 +48,7 @@ Available in [defaults/main.yml](defaults/main.yml):
 | `docker_compose_base_path` | `/opt` | Base directory for Docker Compose projects |
 | `docker_services` | `{}` | Dictionary of services to manage |
 | `docker_compose_file_mode` | `0640` | Mode of the generated compose file |
-| `docker_compose_env_file_mode` | `0600` | Mode of the generated `.env` file |
+| `docker_compose_env_file_mode` | `0600` | Mode of every generated `.env_<name>` file |
 | `docker_compose_files_owner` | `{{ ansible_user \| default("root") }}` | Owner of generated files |
 | `docker_compose_files_group` | same as owner | Group of generated files |
 
@@ -65,8 +65,8 @@ docker_services:
     container_definition: []               # List of service definitions (see below)
     networks_definition: []                # Optional: list of network definitions
     volumes_definition: []                 # Optional: list of volume definitions
-    env_vars: {}                           # Optional: KEY: value dict rendered to <compose dir>/.env
-    env_file_template: "path/to/env.j2"    # Optional: custom Jinja2 template rendered to <compose dir>/.env
+    env_files: {}                          # Optional: {name: {KEY: value}} -> one ".env_<name>" per entry
+    env_file_templates: {}                 # Optional: {name: "path/to/tpl.j2"} -> one ".env_<name>" per entry
 ```
 
 `project_name` is passed to every `docker_compose_v2` call (install, update, start,
@@ -121,48 +121,96 @@ volumes_definition:
 
 #### `.env` files (secrets)
 
-The role can generate the `.env` file next to the compose file. The intended
-pattern is: **keys live in the inventory, values live in an Ansible Vault**.
+The role never writes a plain `.env`. Every env file is **named** and gets
+written as `.env_<name>`, one per container that needs one — even for an app
+with a single container. This keeps secrets scoped to the service that owns
+them instead of a shared file every container in the project can read, and it
+makes multi-container apps (several services in one compose project) safe:
+each service gets its own file, none of them collide.
 
-Option A — `env_vars` dict, rendered with the role's `templates/env.j2`:
+The intended pattern is: **keys live in the inventory, values live in an
+Ansible Vault**.
+
+Option A — `env_files` dict, rendered with the role's `templates/env.j2`.
+The dict key becomes the `<name>` in `.env_<name>` and also the top-level key
+you reference in your vault vars:
 
 ```yaml
 docker_services:
   cloudflared:
-    env_vars:
-      TUNNEL_TOKEN: "{{ vault_cloudflared_tunnel_token }}"
+    env_files:
+      cloudflared:                       # -> <compose dir>/.env_cloudflared
+        TUNNEL_TOKEN: "{{ vault_cloudflared.TUNNEL_TOKEN }}"
+    container_definition:
+      - container_name: cloudflared
+        env_file:
+          - path: .env_cloudflared
+            required: true
 ```
 
-Option B — `env_file_template`, a custom Jinja2 file you own (useful for long
-`.env` files with comments, or `.dist`-style files):
+A multi-container app declares one entry per container that needs secrets:
+
+```yaml
+docker_services:
+  sites:
+    env_files:
+      filerise:                          # -> <compose dir>/.env_filerise
+        TOTAL_UPLOAD_SIZE: "{{ vault_filerise.TOTAL_UPLOAD_SIZE }}"
+      giftlist:                          # -> <compose dir>/.env_giftlist
+        AUTH_SECRET: "{{ vault_giftlist.AUTH_SECRET }}"
+    container_definition:
+      - container_name: filerise
+        env_file:
+          - path: .env_filerise
+            required: true
+      - container_name: giftlist
+        env_file:
+          - path: .env_giftlist
+            required: true
+```
+
+Option B — `env_file_templates` dict, a custom Jinja2 file you own per name
+(useful for long `.env` files with comments, or `.dist`-style files):
 
 ```yaml
 docker_services:
   cloudflared:
-    env_file_template: "{{ inventory_dir }}/templates/cloudflared.env.j2"
+    env_file_templates:
+      cloudflared: "{{ inventory_dir }}/templates/cloudflared.env.j2"  # -> .env_cloudflared
 ```
 
 ```ini
 # templates/cloudflared.env.j2
-TUNNEL_TOKEN={{ vault_cloudflared_tunnel_token }}
+TUNNEL_TOKEN={{ vault_cloudflared.TUNNEL_TOKEN }}
 ```
 
 In both cases the values are expected to come from an encrypted vars file, e.g.
-`group_vars/all/vault.yaml`:
+`group_vars/all/vault.yaml`, grouped one dict per app:
 
 ```yaml
-vault_cloudflared_tunnel_token: "eyJh..."
+vault_cloudflared:
+  TUNNEL_TOKEN: "eyJh..."
+
+vault_filerise:
+  TOTAL_UPLOAD_SIZE: "1G"
+
+vault_giftlist:
+  AUTH_SECRET: "..."
 ```
 
 Notes:
 
-- The `.env` is written with mode `0600` (`docker_compose_env_file_mode`) and the
-  task runs with `diff: false`, so secrets never show up in `--diff` output.
-- A change in the rendered `.env` counts as a definition change: the service is
-  stopped and recreated, exactly as when the compose file changes.
-- If neither `env_vars` nor `env_file_template` is set, the role does not touch
-  `.env`; whatever exists on the host is left as is.
-- Remember to reference the file from the container: `env_file: [{path: .env, required: true}]`.
+- Every `.env_<name>` is written with mode `0600` (`docker_compose_env_file_mode`)
+  and its task runs with `diff: false`, so secrets never show up in `--diff` output.
+- A change in any rendered `.env_<name>` counts as a definition change for the
+  whole app: the service is stopped and recreated, exactly as when the compose
+  file changes.
+- If `env_files`/`env_file_templates` is empty or undefined, the role does not
+  touch any `.env_*` file; whatever exists on the host is left as is.
+- Reference the matching file from each container:
+  `env_file: [{path: .env_<name>, required: true}]`. A stale, unreferenced
+  `.env` from before this convention is not removed automatically — delete it
+  by hand on the host once every container points at its own named file.
 
 ## Usage
 
@@ -227,7 +275,7 @@ The role supports granular control via Ansible tags:
 
 | Tag | Action | Default run | Description |
 |-----|--------|-------------|-------------|
-| `install` | Install/Deploy | yes | Renders compose + `.env`, ensures enabled services are up. Recreates only when the definition changed. |
+| `install` | Install/Deploy | yes | Renders compose + each `.env_<name>`, ensures enabled services are up. Recreates only when the definition changed. |
 | `start` | Start | no (`never`) | `up -d` for enabled services |
 | `stop` | Stop | no (`never`) | Stops every loaded service, regardless of `enabled` |
 | `restart` | Restart | no (`never`) | `stop` + `start` |
@@ -268,8 +316,8 @@ ansible-playbook docker-deploy.yml --tags down
 ### 2. Installation Phase (`install` tag)
 - Creates directory structure for each service
 - Generates `docker-compose.yaml` from templates
-- Generates `.env` when `env_vars` or `env_file_template` is defined
-- If compose or `.env` changed: stops the service, then `up` with `pull: always` and `recreate: always`
+- Generates one `.env_<name>` per entry in `env_files`/`env_file_templates`
+- If compose or any `.env_<name>` changed: stops the service, then `up` with `pull: always` and `recreate: always`
 - If nothing changed: `up` with `pull: missing` and `recreate: auto` (idempotent, brings up stopped services)
 
 ### 3. Update Phase (`update`/`pull` tags)

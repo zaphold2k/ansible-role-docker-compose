@@ -34,34 +34,42 @@
   tags:
     - install
 
-# .env handling: keys live in the inventory (env_vars dict or a custom .j2),
-# values come from vault variables. Never printed / diffed to avoid leaking secrets.
-- name: "[{{ item.key }}] Create or update .env from env_vars"
+# .env handling: keys live in the inventory (env_files dict or a custom .j2
+# per file, in env_file_templates), values come from vault variables.
+# Every service gets its OWN named file, ".env_<name>" -- there is no plain
+# ".env", so multi-container apps never share secrets across services.
+# Never printed / diffed to avoid leaking secrets.
+- name: "[{{ item.key }}] Create or update named .env files from env_files"
   ansible.builtin.template:
     src: "templates/env.j2"
-    dest: "{{ item.value.compose_file | dirname }}/.env"
+    dest: "{{ item.value.compose_file | dirname }}/.env_{{ env_file_item.key }}"
     owner: "{{ docker_compose_files_owner }}"
     group: "{{ docker_compose_files_group }}"
     mode: "{{ docker_compose_env_file_mode }}"
+  vars:
+    env_vars: "{{ env_file_item.value }}"
+  loop: "{{ (item.value.env_files | default({})) | dict2items }}"
+  loop_control:
+    loop_var: env_file_item
+    label: "{{ env_file_item.key }}"
   diff: false
-  register: env_vars_result
-  when:
-    - item.value.env_vars is defined
-    - item.value.env_vars | length > 0
+  register: env_files_result
   tags:
     - install
 
-- name: "[{{ item.key }}] Create or update .env from custom template"
+- name: "[{{ item.key }}] Create or update named .env files from custom templates"
   ansible.builtin.template:
-    src: "{{ item.value.env_file_template }}"
-    dest: "{{ item.value.compose_file | dirname }}/.env"
+    src: "{{ env_template_item.value }}"
+    dest: "{{ item.value.compose_file | dirname }}/.env_{{ env_template_item.key }}"
     owner: "{{ docker_compose_files_owner }}"
     group: "{{ docker_compose_files_group }}"
     mode: "{{ docker_compose_env_file_mode }}"
+  loop: "{{ (item.value.env_file_templates | default({})) | dict2items }}"
+  loop_control:
+    loop_var: env_template_item
+    label: "{{ env_template_item.key }}"
   diff: false
-  register: env_template_result
-  when:
-    - item.value.env_file_template is defined
+  register: env_templates_result
   tags:
     - install
 
@@ -69,8 +77,8 @@
   ansible.builtin.set_fact:
     compose_project_changed: >-
       {{ compose_template_result.changed
-         or (env_vars_result.changed | default(false))
-         or (env_template_result.changed | default(false)) }}
+         or (env_files_result.results | default([]) | selectattr('changed') | list | length > 0)
+         or (env_templates_result.results | default([]) | selectattr('changed') | list | length > 0) }}
   tags:
     - install
 
